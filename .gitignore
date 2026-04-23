@@ -1,0 +1,12 @@
+.anaconda/
+.conda/
+.condarc
+.cache/
+.miniconda3/
+miniconda3/
+*.pyc
+__pycache__/
+.vscode-server/
+*.log
+*.history
+design_space.png
