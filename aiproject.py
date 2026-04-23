@@ -6,66 +6,78 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 # --- STEP 1: DATA LOADING ---
-file_path = 'ansys_results.csv'
-df = pd.read_csv(file_path)
+# Loading the 3-variable dataset [cite: 8, 16]
+try:
+    file_path = 'ansys_results.csv'
+    df = pd.read_csv(file_path)
+    print("✅ Data successfully loaded!")
+except FileNotFoundError:
+    print("❌ Error: 'ansys_results.csv' not found. Please place it in the same folder.")
+    exit()
 
-# Assign inputs and output [cite: 22]
-X = df[['t', 'Q']]
-y = df['Tskin']
+# Assign variables based on updated parameter names [cite: 18, 19]
+X = df[['InsulationThickness', 'HeatFlux']]  # Input variables
+y = df['Tskin']                              # Target variable
 
-# VALIDATION: Split data into 80% Training and 20% Testing
+# --- STEP 2: AI MODEL TRAINING & VALIDATION ---
+# Splitting data to validate using a Test Set (Deliverable Requirement) 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-print(f"Dataset Size: {len(df)} cases (Training: {len(X_train)}, Testing: {len(X_test)})")
-
-# --- STEP 2: AI MODEL TRAINING ---
+# Training the Regression Model: Tskin = f(InsulationThickness, HeatFlux) [cite: 22]
 model = RandomForestRegressor(n_estimators=100, random_state=42)
-model.fit(X_train, y_train) # Train ONLY on the training set
+model.fit(X_train, y_train)
 
-# --- STEP 3: ERROR ANALYSIS (Deliverable) ---
-y_pred_test = model.predict(X_test)
-rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
-accuracy = r2_score(y_test, y_pred_test)
+# --- STEP 3: ERROR ANALYSIS (For Technical Report) ---
+y_pred = model.predict(X_test)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+r2 = r2_score(y_test, y_pred)
 
-print("-" * 30)
-print(f"MODEL PERFORMANCE (Validation)")
-print(f"RMSE: {rmse:.4f} °C")
-print(f"R² Accuracy: {accuracy:.4f}")
-print("-" * 30)
+print("\n--- MODEL PERFORMANCE ANALYSIS ---")
+print(f"Dataset Size: {len(df)} cases")
+print(f"Root Mean Squared Error (RMSE): {rmse:.4f} °C")
+print(f"Model Accuracy (R²): {r2:.4f}")
 
-# --- STEP 4: VISUALIZATION (DESIGN SPACE) [cite: 24, 31] ---
-t_range = np.linspace(1, 5, 50)
-Q_range = np.linspace(0.1, 2.0, 50)
-T_grid = np.zeros((50, 50))
+# --- STEP 4: VISUALIZATION (DESIGN SPACE CONTOUR) ---
+# Generating the contour plot for the technical report [cite: 24, 31]
+thickness_range = np.linspace(1, 5, 100)
+flux_range = np.linspace(0.1, 2.0, 100)
+T_grid = np.zeros((100, 100))
 
-for i, t_val in enumerate(t_range):
-    for j, Q_val in enumerate(Q_range):
-        T_grid[j, i] = model.predict(np.array([[t_val, Q_val]]))[0]
+# Filling the grid with AI predictions
+for i, t_val in enumerate(thickness_range):
+    # Using the new parameter names in the DataFrame to avoid warnings
+    input_batch = pd.DataFrame({'InsulationThickness': [t_val] * 100, 'HeatFlux': flux_range})
+    T_grid[:, i] = model.predict(input_batch)
 
-plt.figure(figsize=(8, 6))
-cp = plt.contourf(t_range, Q_range, T_grid, cmap='RdYlBu_r', levels=20)
-plt.colorbar(cp, label='Skin Temperature (°C)')
-# Draw the safety constraint line at 43.5°C [cite: 26]
-cs = plt.contour(t_range, Q_range, T_grid, levels=[43.5], colors='red', linestyles='--')
-plt.clabel(cs, inline=True, fontsize=10, fmt='Safety Limit (43.5°C)')
-plt.xlabel('Insulation Thickness (t) [mm]')
-plt.ylabel('Device Heat Flux (Q) [W]')
-plt.title('Design Space: Performance vs. Safety')
-plt.savefig('design_space.png')
+plt.figure(figsize=(10, 7))
+cp = plt.contourf(thickness_range, flux_range, T_grid, cmap='RdYlBu_r', levels=25)
+plt.colorbar(cp, label='Skin Temperature ($T_{skin}$) [°C]')
 
-# --- STEP 5: OPTIMIZATION TASK [cite: 26] ---
-best_Q = 0
-best_t = 0
+# Safety Constraint: Must keep Tskin <= 43.5°C [cite: 26]
+cs = plt.contour(thickness_range, flux_range, T_grid, levels=[43.5], colors='red', linewidths=3, linestyles='--')
+plt.clabel(cs, inline=True, fontsize=12, fmt='SAFETY LIMIT (43.5°C)')
 
-for t_val in np.linspace(1, 5, 100):
-    for Q_val in np.linspace(2.0, 0.1, 100):
-        temp_pred = model.predict(np.array([[t_val, Q_val]]))[0]
-        if temp_pred <= 43.5:
-            if Q_val > best_Q:
-                best_Q = Q_val
-                best_t = t_val
-            break 
+plt.xlabel('Insulation Thickness [mm]')
+plt.ylabel('Device Heat Flux [W]')
+plt.title('AI-Generated Design Space: Performance vs. Safety')
+plt.grid(alpha=0.3)
+plt.savefig('design_space_contour.png', dpi=300)
+print("\n✅ Contour plot saved as 'design_space_contour.png'")
 
-print(f"--- Final Recommendation [cite: 33] ---")
-print(f"To maximize performance, we recommend an insulation thickness of {best_t:.2f} mm.")
-print(f"This allows for a maximum power output of {best_Q:.2f} Watts while maintaining skin safety.")
+# --- STEP 5: OPTIMIZATION (FINDING MAX Q) ---
+# Iteratively finding the combination that maximizes HeatFlux while staying safe [cite: 11, 26]
+best_flux, best_thickness = 0, 0
+
+for t_val in thickness_range:
+    # Test heat flux from high to low to find the maximum safe limit
+    for q_val in reversed(flux_range):
+        pred_input = pd.DataFrame({'InsulationThickness': [t_val], 'HeatFlux': [q_val]})
+        pred = model.predict(pred_input)[0]
+        if pred <= 43.5:
+            if q_val > best_flux:
+                best_flux, best_thickness = q_val, t_val
+            break
+
+print("\n--- FINAL RECOMMENDATION ---")
+print(f"To maximize performance, we recommend an insulation thickness of {best_thickness:.2f} mm.")
+print(f"This allows for a maximum power output of {best_flux:.2f} Watts while maintaining skin safety.")
