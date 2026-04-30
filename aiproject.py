@@ -8,12 +8,18 @@ from sklearn.metrics import mean_squared_error, r2_score
 # --- STEP 1: DATA LOADING ---
 # Loading the 3-variable dataset [cite: 8, 16]
 try:
-    file_path = 'ansys_results.csv'
+    file_path = 'clean.csv'
     df = pd.read_csv(file_path)
     print("✅ Data successfully loaded!")
+    print("DataFrame columns:", list(df.columns))
 except FileNotFoundError:
     print("❌ Error: 'ansys_results.csv' not found. Please place it in the same folder.")
     exit()
+
+
+column_names = df.columns
+assert 'InsulationThickness' in column_names, "Error: 'InsulationThickness' column missing."
+assert 'HeatFlux' in column_names, "Error: 'HeatFlux' column missing."
 
 # Assign variables based on updated parameter names [cite: 18, 19]
 X = df[['InsulationThickness', 'HeatFlux']]  # Input variables
@@ -67,13 +73,14 @@ print("\n✅ Contour plot saved as 'design_space_contour.png'")
 # --- STEP 5: OPTIMIZATION (FINDING MAX Q) ---
 # Iteratively finding the combination that maximizes HeatFlux while staying safe [cite: 11, 26]
 best_flux, best_thickness = 0, 0
+FDA_RECOMMENDED_TEMP = 43.5  # Maximum safe skin temperature in °C [cite: 26]
 
 for t_val in thickness_range:
     # Test heat flux from high to low to find the maximum safe limit
     for q_val in reversed(flux_range):
         pred_input = pd.DataFrame({'InsulationThickness': [t_val], 'HeatFlux': [q_val]})
         pred = model.predict(pred_input)[0]
-        if pred <= 43.5:
+        if pred <= FDA_RECOMMENDED_TEMP:
             if q_val > best_flux:
                 best_flux, best_thickness = q_val, t_val
             break

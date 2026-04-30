@@ -4,9 +4,11 @@
 .cache/
 .miniconda3/
 miniconda3/
+Miniconda3-latest-Linux-x86_64.sh
 *.pyc
 __pycache__/
 .vscode-server/
 *.log
+*.Zone.Identifier
 *.history
 design_space.png
